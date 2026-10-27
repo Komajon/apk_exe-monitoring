@@ -1,0 +1,25 @@
+{
+  "name": "ap-babilon-monitor",
+  "version": "1.0.0",
+  "description": "Мониторинг AP_Babilon-T",
+  "author": "Babilon",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "prepare-ui": "node -e \"require('fs').cpSync('../ui','ui',{recursive:true})\"",
+    "start": "npm run prepare-ui && electron .",
+    "dist": "npm run prepare-ui && electron-builder --win portable --x64"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.babilon.apmonitor",
+    "productName": "AP_Babilon-T Monitor",
+    "directories": { "output": "dist", "buildResources": "build" },
+    "files": ["main.js", "preload.js", "ui/**/*", "package.json"],
+    "win": { "icon": "build/icon.ico", "target": [{ "target": "portable", "arch": ["x64"] }] },
+    "portable": { "artifactName": "AP_Babilon-T_Monitor.exe" }
+  }
+}
