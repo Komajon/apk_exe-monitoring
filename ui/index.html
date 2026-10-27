@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Мониторинг AP_Babilon-T</title>
+<style>
+    :root {
+        --bg:#0a0f1e; --bg2:#0e1530; --panel:#121a33; --panel2:#18224a; --border:rgba(255,255,255,.08);
+        --text:#e8edfb; --muted:#8e9bc0; --accent:#5b8def; --accent2:#7c5cff;
+        --ok:#2ecc8f; --warn:#f5b942; --fail:#ff5d6c; --idle:#56608a; --track:rgba(255,255,255,.07);
+        --row-hover:rgba(255,255,255,.035); --shadow:0 10px 30px rgba(0,0,0,.35);
+    }
+    [data-theme="light"] {
+        --bg:#eef1f8; --bg2:#e6eaf5; --panel:#ffffff; --panel2:#f3f5fb; --border:rgba(20,30,70,.09);
+        --text:#162038; --muted:#6a7595; --accent:#3d6fe0; --accent2:#6a4ce0;
+        --ok:#18a96b; --warn:#d99a14; --fail:#e5384c; --idle:#a3abc6; --track:rgba(20,30,70,.08);
+        --row-hover:rgba(20,30,70,.03); --shadow:0 10px 30px rgba(30,40,90,.12);
+    }
+    * { box-sizing:border-box; }
+    html, body { height:100%; }
+    body { margin:0; font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:radial-gradient(1200px 600px at 10% -10%, var(--bg2), var(--bg)); color:var(--text); font-size:14px; }
+    button, input, select { font-family:inherit; font-size:inherit; color:inherit; }
+    svg { display:block; }
+
+    #topProgress { position:fixed; top:0; left:0; height:3px; width:0; background:linear-gradient(90deg,var(--accent),var(--accent2)); z-index:300; transition:width .15s; }
+
+    .app { display:grid; grid-template-columns:310px 1fr; height:100vh; }
+
+    /* ===== Sidebar ===== */
+    .side { background:var(--panel); border-right:1px solid var(--border); padding:20px 18px; overflow-y:auto; display:flex; flex-direction:column; gap:18px; }
+    .brand { display:flex; align-items:center; gap:12px; }
+    .logo { width:42px; height:42px; border-radius:12px; background:linear-gradient(135deg,var(--accent),var(--accent2)); display:grid; place-items:center; color:#fff; box-shadow:0 6px 18px rgba(91,141,239,.4); }
+    .brand h1 { margin:0; font-size:16px; line-height:1.2; }
+    .brand small { color:var(--muted); font-size:12px; }
+
+    .donut-card { background:var(--panel2); border:1px solid var(--border); border-radius:16px; padding:16px; display:flex; gap:14px; align-items:center; }
+    .donut { position:relative; width:104px; height:104px; flex-shrink:0; }
+    .donut svg { width:100%; height:100%; }
+    .donut circle { fill:none; stroke-width:10; transition:stroke-dasharray .4s, stroke-dashoffset .4s; }
+    .donut .center { position:absolute; inset:0; display:grid; place-content:center; text-align:center; }
+    .donut .center b { font-size:22px; line-height:1; }
+    .donut .center span { font-size:10px; color:var(--muted); margin-top:3px; }
+    .legend { display:flex; flex-direction:column; gap:7px; font-size:13px; flex:1; }
+    .legend div { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+    .legend i { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:7px; }
+    .legend b { font-variant-numeric:tabular-nums; }
+
+    .sec-title { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); font-weight:700; margin-bottom:8px; }
+    .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; border:1px solid var(--border); background:var(--panel2); padding:9px 14px; border-radius:10px; cursor:pointer; font-weight:600; transition:.15s; white-space:nowrap; }
+    .btn:hover { border-color:var(--accent); transform:translateY(-1px); }
+    .btn:disabled { opacity:.5; cursor:not-allowed; transform:none; }
+    .btn.primary { background:linear-gradient(135deg,var(--accent),var(--accent2)); border:none; color:#fff; box-shadow:0 6px 18px rgba(91,141,239,.35); }
+    .btn.danger { background:var(--fail); border:none; color:#fff; }
+    .btn.ghost { background:transparent; }
+    .btn.sm { padding:6px 10px; font-size:13px; }
+    .btn.block { width:100%; }
+    .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .stack { display:flex; flex-direction:column; gap:8px; }
+
+    .field label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+    .field input[type=number], .field input[type=text], .field input[type=search], .field select {
+        width:100%; background:var(--panel2); border:1px solid var(--border); border-radius:9px; padding:8px 10px; outline:none; }
+    .field input:focus, .field select:focus { border-color:var(--accent); }
+    .grid3 { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+    .switch { display:flex; align-items:center; gap:9px; font-size:13px; cursor:pointer; }
+    .switch input { width:16px; height:16px; accent-color:var(--accent); }
+    .hint { font-size:11.5px; color:var(--muted); line-height:1.4; margin-top:4px; }
+    .side-foot { margin-top:auto; display:flex; justify-content:space-between; align-items:center; color:var(--muted); font-size:12px; }
+
+    /* ===== Main ===== */
+    .main { display:flex; flex-direction:column; min-width:0; height:100vh; padding:22px 26px 0; }
+    .topbar { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:14px; }
+    .topbar h2 { margin:0; font-size:22px; }
+    .topbar .sub { color:var(--muted); font-size:13px; margin-top:3px; }
+    .searchbox { position:relative; width:300px; max-width:100%; }
+    .searchbox svg { position:absolute; left:11px; top:50%; transform:translateY(-50%); color:var(--muted); }
+    .searchbox input { width:100%; background:var(--panel); border:1px solid var(--border); border-radius:11px; padding:10px 12px 10px 36px; outline:none; }
+    .searchbox input:focus { border-color:var(--accent); }
+    .searchbox kbd { position:absolute; right:10px; top:50%; transform:translateY(-50%); font-size:11px; color:var(--muted); border:1px solid var(--border); border-radius:5px; padding:0 6px; }
+
+    .banner { padding:10px 14px; border-radius:10px; margin-bottom:10px; font-size:13px; line-height:1.45; display:none; }
+    .banner.err { background:rgba(255,93,108,.12); border:1px solid var(--fail); }
+    .banner.warn { background:rgba(245,185,66,.1); border:1px solid var(--warn); }
+
+    .toolbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+    .chips { display:flex; gap:7px; flex-wrap:wrap; flex:1; }
+    .chip { background:var(--panel); border:1px solid var(--border); border-radius:999px; padding:6px 13px; cursor:pointer; font-weight:600; display:inline-flex; gap:7px; align-items:center; transition:.15s; }
+    .chip b { background:var(--panel2); border-radius:999px; padding:0 7px; font-size:12px; color:var(--muted); }
+    .chip:hover { border-color:var(--accent); }
+    .chip.on { background:linear-gradient(135deg,var(--accent),var(--accent2)); color:#fff; border-color:transparent; }
+    .chip.on b { background:rgba(255,255,255,.22); color:#fff; }
+    .toolbar select { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:8px 10px; outline:none; max-width:200px; }
+
+    .table-wrap { flex:1; overflow:auto; background:var(--panel); border:1px solid var(--border); border-radius:16px 16px 0 0; box-shadow:var(--shadow); }
+    table { width:100%; border-collapse:collapse; }
+    thead th { position:sticky; top:0; background:var(--panel2); text-align:left; font-size:11.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); padding:12px 14px; user-select:none; z-index:2; border-bottom:1px solid var(--border); white-space:nowrap; }
+    thead th[data-sort] { cursor:pointer; }
+    thead th[data-sort]:hover { color:var(--text); }
+    th .arr { color:var(--accent); margin-left:4px; }
+    tbody td { padding:10px 14px; border-bottom:1px solid var(--border); vertical-align:middle; }
+    tbody tr { transition:background .12s; }
+    tbody tr:hover { background:var(--row-hover); }
+    tbody tr.st-fail { box-shadow:inset 3px 0 0 var(--fail); }
+    tbody tr.st-warn { box-shadow:inset 3px 0 0 var(--warn); }
+    .nm b { display:block; font-weight:600; }
+    .mono { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:13px; }
+    .muted { color:var(--muted); }
+    .pill { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:700; white-space:nowrap; }
+    .pill::before { content:""; width:7px; height:7px; border-radius:50%; background:currentColor; }
+    .pill.ok { color:var(--ok); background:rgba(46,204,143,.12); }
+    .pill.warn { color:var(--warn); background:rgba(245,185,66,.13); }
+    .pill.fail { color:var(--fail); background:rgba(255,93,108,.13); }
+    .pill.idle { color:var(--idle); background:rgba(120,130,170,.14); }
+    .pill.checking { color:var(--accent); background:rgba(91,141,239,.14); }
+    .pill.checking::before { animation:pulse 1s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1; transform:scale(1)} 50%{opacity:.3; transform:scale(.6)} }
+    .cell { display:flex; align-items:center; gap:7px; }
+    .icon-btn { background:transparent; border:none; padding:5px; border-radius:7px; cursor:pointer; color:var(--muted); display:inline-grid; place-items:center; }
+    .icon-btn:hover { background:var(--panel2); color:var(--text); }
+    .icon-btn.del:hover { color:var(--fail); }
+    .pw { cursor:pointer; letter-spacing:.05em; }
+    .actions { display:flex; gap:2px; justify-content:flex-end; }
+    .empty { text-align:center; padding:50px 10px; color:var(--muted); }
+    .statusbar { background:var(--panel2); border:1px solid var(--border); border-top:none; border-radius:0 0 16px 16px; padding:9px 16px; font-size:12.5px; color:var(--muted); display:flex; justify-content:space-between; margin-bottom:18px; }
+
+    /* ===== Modal ===== */
+    .modal { position:fixed; inset:0; background:rgba(5,8,20,.6); backdrop-filter:blur(4px); display:none; place-items:center; z-index:200; }
+    .modal.show { display:grid; }
+    .modal-box { background:var(--panel); border:1px solid var(--border); border-radius:18px; padding:24px; width:440px; max-width:94vw; box-shadow:var(--shadow); }
+    .modal-box h3 { margin:0 0 16px; }
+    .modal-box .field { margin-bottom:12px; }
+    .modal-btns { display:flex; justify-content:flex-end; gap:10px; margin-top:18px; }
+
+    .toast { position:fixed; bottom:26px; left:50%; transform:translate(-50%,20px); background:var(--panel2); border:1px solid var(--border); color:var(--text); padding:11px 18px; border-radius:12px; box-shadow:var(--shadow); opacity:0; pointer-events:none; transition:.25s; z-index:400; }
+    .toast.show { opacity:1; transform:translate(-50%,0); }
+
+    ::-webkit-scrollbar { width:10px; height:10px; }
+    ::-webkit-scrollbar-thumb { background:var(--track); border-radius:10px; border:2px solid transparent; background-clip:content-box; }
+
+    @media (max-width:900px) {
+        .app { grid-template-columns:1fr; height:auto; }
+        .side { border-right:none; border-bottom:1px solid var(--border); }
+        .main { height:auto; min-height:100vh; }
+        .table-wrap { max-height:70vh; }
+    }
+
+    .mobile-only { display:none; }
+    @media (max-width:700px) {
+        body { font-size:15px; padding-top:env(safe-area-inset-top); }
+        .mobile-only { display:inline-flex; }
+        .side:not(.open) .hide-m { display:none; }
+        .side { padding:14px; gap:14px; }
+        .main { padding:14px 12px 0; }
+        .topbar h2 { font-size:19px; }
+        .searchbox { width:100%; }
+        .searchbox kbd { display:none; }
+        .toolbar select { max-width:none; flex:1; }
+        .table-wrap { max-height:none; overflow:visible; background:transparent; border:none; box-shadow:none; }
+        table, tbody { display:block; }
+        thead { display:none; }
+        tbody tr { display:block; background:var(--panel); border:1px solid var(--border); border-radius:14px; margin-bottom:10px; padding:10px 12px; }
+        tbody td { display:flex; justify-content:space-between; align-items:center; gap:10px; border:none; padding:5px 0; }
+        tbody td[data-label]::before { content:attr(data-label); color:var(--muted); font-size:12px; }
+        tbody td.nm { padding-bottom:6px; }
+        tbody td.nm b { font-size:15px; }
+        .actions { width:100%; justify-content:space-around; border-top:1px solid var(--border); padding-top:6px; }
+        .icon-btn { padding:9px; }
+        .statusbar { border:1px solid var(--border); border-radius:12px; margin-bottom:24px; flex-direction:column; gap:3px; }
+        .statusbar span:last-child { display:none; }
+        .modal-box { padding:18px; }
+    }
+</style>
+</head>
+<body>
+<div id="topProgress"></div>
+<div class="app">
+    <!-- ===== SIDEBAR ===== -->
+    <aside class="side">
+        <div class="brand">
+            <div class="logo" data-icon="wifi" data-size="22"></div>
+            <div><h1>AP_Babilon-T</h1><small>Мониторинг точек доступа</small></div>
+        </div>
+
+        <div class="donut-card">
+            <div class="donut">
+                <svg viewBox="0 0 100 100" id="donutSvg"></svg>
+                <div class="center"><b id="donutPct">—</b><span>онлайн</span></div>
+            </div>
+            <div class="legend" id="legend"></div>
+        </div>
+
+        <div>
+            <div class="sec-title">Проверка</div>
+            <div class="stack">
+                <button class="btn primary block" id="btnStart"><span data-icon="play" data-size="15"></span> Запустить проверку</button>
+                <button class="btn danger block" id="btnStop" style="display:none"><span data-icon="stop" data-size="15"></span> Остановить</button>
+                <div class="hint" id="progText"></div>
+                <button class="btn sm block mobile-only" id="btnMore">⚙ Настройки и база</button>
+            </div>
+        </div>
+
+        <div class="hide-m">
+            <div class="sec-title">Настройки</div>
+            <div class="grid3">
+                <div class="field"><label for="timeoutMs">Таймаут, мс</label><input type="number" id="timeoutMs" value="2000" min="200" step="100"></div>
+                <div class="field"><label for="retries">Повторы</label><input type="number" id="retries" value="2" min="0" max="20"></div>
+                <div class="field"><label for="conc">Потоки</label><input type="number" id="conc" value="20" min="1" max="50"></div>
+            </div>
+            <label class="switch" style="margin-top:12px"><input type="checkbox" id="auto"> Автопроверка каждые
+                <input type="number" id="autoMin" value="5" min="1" max="120" style="width:58px;background:var(--panel2);border:1px solid var(--border);border-radius:7px;padding:3px 6px"> мин</label>
+            <div class="hint" id="autoText"></div>
+        </div>
+
+        <div class="hide-m">
+            <div class="sec-title">База устройств</div>
+            <div class="stack">
+                <button class="btn block" id="btnAdd"><span data-icon="plus" data-size="15"></span> Добавить устройство</button>
+                <div class="grid2">
+                    <button class="btn sm" id="btnExport"><span data-icon="download" data-size="14"></span> JSON</button>
+                    <button class="btn sm" id="btnImport"><span data-icon="upload" data-size="14"></span> Импорт</button>
+                </div>
+                <button class="btn sm block" id="btnCsv"><span data-icon="download" data-size="14"></span> Отчёт в CSV</button>
+                <button class="btn sm ghost block" id="btnReset">Сбросить к исходной базе</button>
+                <input type="file" id="importFile" accept=".json,application/json" style="display:none">
+            </div>
+        </div>
+
+        <div class="side-foot hide-m">
+            <span id="dbInfo"></span>
+            <button class="icon-btn" id="btnTheme" title="Сменить тему"></button>
+        </div>
+    </aside>
+
+    <!-- ===== MAIN ===== -->
+    <main class="main">
+        <div class="topbar">
+            <div>
+                <h2>Состояние сети</h2>
+                <div class="sub" id="lastCheck">Проверка ещё не запускалась</div>
+            </div>
+            <div class="searchbox">
+                <span data-icon="search" data-size="16"></span>
+                <input type="search" id="search" placeholder="Поиск: имя, IP, SSID, логин…">
+                <kbd>/</kbd>
+            </div>
+        </div>
+
+        <div class="banner err" id="httpsBanner">⛔ Страница открыта по HTTPS — браузер блокирует запросы к <b>http://IP</b>, проверка будет неверной. Откройте файл локально (file://) или по http://.</div>
+        <div class="banner warn" id="dupBanner"></div>
+
+        <div class="toolbar">
+            <div class="chips" id="chips"></div>
+            <select id="groupSel" title="Группа (первое слово в названии)"></select>
+            <button class="btn sm" id="btnCopyFail"><span data-icon="copy" data-size="14"></span> Скопировать офлайн</button>
+        </div>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th data-sort="status" style="width:130px">Статус</th>
+                        <th data-sort="name">Устройство</th>
+                        <th data-sort="ip">IP-адрес</th>
+                        <th data-sort="ssid">SSID</th>
+                        <th>Логин</th>
+                        <th>Пароль</th>
+                        <th data-sort="ms">Отклик</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="tbody"></tbody>
+            </table>
+        </div>
+        <div class="statusbar"><span id="shownInfo"></span><span>Нажмите на заголовок колонки для сортировки · <b>/</b> — поиск</span></div>
+    </main>
+</div>
+
+<!-- Редактирование -->
+<div class="modal" id="editModal">
+    <div class="modal-box">
+        <h3 id="editTitle">Добавить устройство</h3>
+        <div class="field"><label>Имя *</label><input type="text" id="fName" placeholder="Например: А.Чоми Powerbeam m2"></div>
+        <div class="field"><label>IP-адрес *</label><input type="text" id="fIp" placeholder="192.168.1.1"></div>
+        <div class="field"><label>SSID</label><input type="text" id="fSsid" placeholder="необязательно"></div>
+        <div class="grid2">
+            <div class="field"><label>Логин</label><input type="text" id="fLogin" placeholder="ubnt" autocomplete="off"></div>
+            <div class="field"><label>Пароль</label><input type="text" id="fPass" autocomplete="off"></div>
+        </div>
+        <div class="modal-btns">
+            <button class="btn" data-close="editModal">Отмена</button>
+            <button class="btn primary" id="btnSave">Сохранить</button>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   ФИНАЛЬНАЯ ВЕРСИЯ
+   - Сохранение настроек исправлено
+   - Повторы до 20
+   - Поддержка внешнего JSON и локального хранилища
+   ============================================================ */
+
+const KEY = 'babilon_db_v2', OLD_KEY = 'babilon_db', RKEY = 'babilon_last_v2',
+      SKEY = 'babilon_settings_pc', TKEY = 'babilon_theme';
+const EXTERNAL_DB_URL = 'hosts.json';
+const $ = id => document.getElementById(id);
+// Мост к нативной части: Electron (ПК) или Tauri (Android)
+const invoke = (cmd, args) => window.native ? window.native.invoke(cmd, args) : window.__TAURI__.core.invoke(cmd, args);
+
+const ICONS = {
+    wifi: '<path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>',
+    refresh: '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>',
+    ext: '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>',
+    edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>',
+    trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>',
+    copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+    sun: '<circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>',
+    moon: '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>',
+    play: '<polygon points="5 3 19 12 5 21 5 3"/>',
+    stop: '<rect x="6" y="6" width="12" height="12" rx="1"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+    upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
+    search: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>'
+};
+function icon(name, size) {
+    size = size || 16;
+    return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name] || ''}</svg>`;
+}
+document.querySelectorAll('[data-icon]').forEach(el => { el.innerHTML = icon(el.dataset.icon, +el.dataset.size || 16); });
+
+/* ---------- Состояние ---------- */
+let hosts = [];
+let results = {};
+let checking = new Set();
+let running = false, stopFlag = false;
+let filter = 'all', query = '', group = '';
+let sort = { key: '', dir: 1 };
+let revealed = new Set();
+let lastFinish = 0, lastGroupSig = '';
+
+/* ---------- Утилиты ---------- */
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } }
+function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
+function clampInt(v, min, max, def) { const n = parseInt(v, 10); return isNaN(n) ? def : Math.min(max, Math.max(min, n)); }
+let toastTimer;
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2200); }
+async function copyText(text, okMsg) {
+    try { await navigator.clipboard.writeText(text); toast(okMsg || 'Скопировано'); }
+    catch (e) {
+        const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); toast(okMsg || 'Скопировано'); } catch (e2) { prompt('Скопируйте вручную:', text); }
+        ta.remove();
+    }
+}
+function validIp(ip) {
+    if (!ip) return false;
+    const m = ip.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (m) return m.slice(1).every(o => +o <= 255);
+    return /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/i.test(ip);
+}
+function toObj(a) {
+    if (!a) return { id: uid(), name: '', ip: '', ssid: '', login: '', pass: '' };
+    if (Array.isArray(a)) return { id: uid(), name: a[0] || '', ip: a[1] || '', ssid: a[2] || '', login: a[3] || '', pass: a[4] || '' };
+    return { id: uid(), name: a.name || '', ip: a.ip || '', ssid: a.ssid || '', login: a.login || '', pass: a.pass || '' };
+}
+function ipKey(ip) { return ip.split('.').map(n => n.padStart(3, '0')).join('.'); }
+function groupOf(h) { return (h.name.trim().split(/\s+/)[0] || '—'); }
+function fmtTime(t) { return new Date(t).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
+
+/* ---------- Тема ---------- */
+function applyTheme(t) {
+    document.documentElement.dataset.theme = t;
+    $('btnTheme').innerHTML = icon(t === 'dark' ? 'sun' : 'moon', 18);
+    lsSet(TKEY, t);
+}
+$('btnMore').onclick = () => document.querySelector('.side').classList.toggle('open');
+$('btnTheme').onclick = () => applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+
+/* ---------- Загрузка базы ---------- */
+async function loadExternalDB() {
+    try {
+        let txt = await invoke('load_hosts');
+        if (!txt) { const r = await fetch('hosts.json', { cache: 'no-store' }); if (!r.ok) return null; txt = await r.text(); }
+        const data = JSON.parse(txt.replace(/^\ufeff/, ''));
+        if (!Array.isArray(data)) throw new Error('Не массив');
+        return data.map(toObj).filter(h => h.ip && h.name && validIp(h.ip));
+    } catch (e) {
+        console.warn('hosts.json не загружен:', e);
+        return null;
+    }
+}
+
+async function loadDB() {
+    const external = await loadExternalDB();
+    if (external && external.length) {
+        hosts = external;
+        saveDB();
+        toast(`Загружено из hosts.json: ${hosts.length} устройств`);
+        return;
+    }
+    let loaded = null;
+    try {
+        const v2 = lsGet(KEY);
+        if (v2) loaded = JSON.parse(v2);
+        else { const old = lsGet(OLD_KEY); if (old) loaded = JSON.parse(old).map(toObj); }
+    } catch (e) { loaded = null; }
+    if (!Array.isArray(loaded)) loaded = [];
+    hosts = loaded.filter(h => h && h.ip);
+    try { results = JSON.parse(lsGet(RKEY) || '{}') || {}; } catch (e) { results = {}; }
+    saveDB();
+}
+
+function saveDB() {
+    if (!lsSet(KEY, JSON.stringify(hosts))) toast('⚠ Не удалось сохранить базу в память браузера');
+    scheduleRender();
+}
+function saveResults() { lsSet(RKEY, JSON.stringify(results)); }
+
+/* ---------- Настройки ---------- */
+function loadSettings() {
+    try {
+        const s = JSON.parse(lsGet(SKEY) || '{}');
+        if (s.timeout) $('timeoutMs').value = s.timeout;
+        if (s.retries !== undefined) $('retries').value = s.retries; // !== undefined чтобы 0 тоже работал
+        if (s.conc) $('conc').value = s.conc;
+        $('auto').checked = !!s.auto;
+        if (s.autoMin) $('autoMin').value = s.autoMin;
+    } catch (e) { console.error('Ошибка загрузки настроек', e); }
+}
+
+function saveSettings() {
+    const settings = {
+        timeout: $('timeoutMs').value, 
+        retries: $('retries').value, 
+        conc: $('conc').value,
+        auto: $('auto').checked, 
+        autoMin: $('autoMin').value
+    };
+    lsSet(SKEY, JSON.stringify(settings));
+}
+
+// Сохраняем при любом изменении (включая ввод с клавиатуры)
+['timeoutMs', 'retries', 'conc', 'auto', 'autoMin'].forEach(id => {
+    $(id).addEventListener('input', saveSettings);
+    $(id).addEventListener('change', saveSettings);
+});
+
+/* ---------- Статусы ---------- */
+const LABEL = { ok: 'Онлайн', warn: 'Потери', fail: 'Офлайн', idle: 'Не проверен', checking: 'Проверка' };
+const RANK = { fail: 0, warn: 1, checking: 2, idle: 3, ok: 4 };
+function statusOf(h) {
+    if (checking.has(h.ip)) return 'checking';
+    const r = results[h.ip];
+    if (!r) return 'idle';
+    if (!r.ok) return 'fail';
+    return r.attempts > 1 ? 'warn' : 'ok';
+}
+
+/* ---------- Отрисовка ---------- */
+let renderQueued = false;
+function scheduleRender() { if (renderQueued) return; renderQueued = true; requestAnimationFrame(() => { renderQueued = false; render(); }); }
+
+function render() {
+    const counts = { ok: 0, warn: 0, fail: 0, idle: 0, checking: 0 };
+    hosts.forEach(h => counts[statusOf(h)]++);
+    renderDonut(counts);
+    renderChips(counts);
+    renderGroups();
+    renderTable();
+    renderMeta(counts);
+}
+
+function renderDonut(c) {
+    const R = 42, C = 2 * Math.PI * R, total = hosts.length || 1;
+    const idleAll = c.idle + c.checking;
+    const segs = [['ok', c.ok], ['warn', c.warn], ['fail', c.fail], ['idle', idleAll]];
+    let off = 0;
+    let html = `<circle cx="50" cy="50" r="${R}" style="stroke:var(--track)"/>`;
+    segs.forEach(([k, n]) => {
+        if (!n) return;
+        const len = n / total * C;
+        html += `<circle cx="50" cy="50" r="${R}" style="stroke:var(--${k})" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-off}" transform="rotate(-90 50 50)"/>`;
+        off += len;
+    });
+    $('donutSvg').innerHTML = html;
+    const checked = c.ok + c.warn + c.fail;
+    $('donutPct').textContent = checked ? Math.round((c.ok + c.warn) / checked * 100) + '%' : '—';
+    $('legend').innerHTML = [['ok', 'Онлайн'], ['warn', 'С потерями'], ['fail', 'Офлайн'], ['idle', 'Не проверены']]
+        .map(([k, l]) => `<div><span><i style="background:var(--${k})"></i>${l}</span><b>${k === 'idle' ? idleAll : c[k]}</b></div>`).join('');
+}
+
+function renderChips(c) {
+    const defs = [['all', 'Все', hosts.length], ['ok', 'Онлайн', c.ok], ['warn', 'Потери', c.warn], ['fail', 'Офлайн', c.fail], ['idle', 'Не проверены', c.idle + c.checking]];
+    $('chips').innerHTML = defs.map(([k, l, n]) => `<button class="chip ${filter === k ? 'on' : ''}" data-f="${k}">${l} <b>${n}</b></button>`).join('');
+}
+
+function renderGroups() {
+    const groups = [...new Set(hosts.map(groupOf))].sort((a, b) => a.localeCompare(b, 'ru'));
+    const sig = groups.join('|') + '§' + group;
+    if (sig === lastGroupSig) return;
+    lastGroupSig = sig;
+    if (group && !groups.includes(group)) group = '';
+    $('groupSel').innerHTML = '<option value="">Все группы</option>' +
+        groups.map(g => `<option value="${esc(g)}" ${g === group ? 'selected' : ''}>${esc(g)}</option>`).join('');
+}
+
+function visibleHosts() {
+    const q = query.trim().toLowerCase();
+    let list = hosts.filter(h => {
+        const s = statusOf(h);
+        if (filter !== 'all') {
+            if (filter === 'idle') { if (s !== 'idle' && s !== 'checking') return false; }
+            else if (s !== filter) return false;
+        }
+        if (group && groupOf(h) !== group) return false;
+        if (q && !(h.name + ' ' + h.ip + ' ' + h.ssid + ' ' + h.login).toLowerCase().includes(q)) return false;
+        return true;
+    });
+    if (sort.key) {
+        const val = h => {
+            switch (sort.key) {
+                case 'status': return RANK[statusOf(h)];
+                case 'ip': return ipKey(h.ip);
+                case 'ms': { const r = results[h.ip]; return r && r.ok ? r.ms : 1e9; }
+                default: return String(h[sort.key] || '').toLowerCase();
+            }
+        };
+        list = list.slice().sort((a, b) => {
+            const x = val(a), y = val(b);
+            return (x < y ? -1 : x > y ? 1 : 0) * sort.dir;
+        });
+    }
+    return list;
+}
+
+function renderTable() {
+    const list = visibleHosts();
+    document.querySelectorAll('thead th[data-sort]').forEach(th => {
+        const old = th.querySelector('.arr'); if (old) old.remove();
+        if (th.dataset.sort === sort.key) th.insertAdjacentHTML('beforeend', `<span class="arr">${sort.dir === 1 ? '▲' : '▼'}</span>`);
+    });
+    if (!list.length) {
+        $('tbody').innerHTML = `<tr><td colspan="8"><div class="empty">Ничего не найдено</div></td></tr>`;
+    } else {
+        $('tbody').innerHTML = list.map(h => {
+            const s = statusOf(h), r = results[h.ip];
+            let ms = '<span class="muted">—</span>';
+            if (r && r.ok) ms = `<span class="mono">${r.ms} мс</span>` + (r.attempts > 1 ? ` <span class="muted" title="Ответил с ${r.attempts}-й попытки">×${r.attempts}</span>` : '');
+            else if (r && !r.ok) ms = `<span class="muted" title="Попыток: ${r.attempts}">× ${r.attempts}</span>`;
+            const pw = h.pass
+                ? `<span class="pw" data-act="pw" data-id="${esc(h.id)}" title="Нажмите, чтобы показать/скрыть">${revealed.has(h.id) ? esc(h.pass) : '••••••'}</span>
+                   <button class="icon-btn" data-act="copypw" data-id="${esc(h.id)}" title="Копировать пароль">${icon('copy', 14)}</button>`
+                : '<span class="muted">—</span>';
+            return `<tr class="st-${s}">
+                <td data-label="Статус"><span class="pill ${s}">${LABEL[s]}</span></td>
+                <td class="nm"><b>${esc(h.name)}</b></td>
+                <td data-label="IP"><div class="cell"><span class="mono">${esc(h.ip)}</span>
+                    <button class="icon-btn" data-act="copyip" data-id="${esc(h.id)}" title="Копировать IP">${icon('copy', 14)}</button></div></td>
+                <td data-label="SSID" class="muted">${esc(h.ssid || '—')}</td>
+                <td data-label="Логин" class="mono">${esc(h.login || '—')}</td>
+                <td data-label="Пароль"><div class="cell">${pw}</div></td>
+                <td data-label="Отклик">${ms}</td>
+                <td><div class="actions">
+                    <button class="icon-btn" data-act="check" data-id="${esc(h.id)}" title="Проверить только это">${icon('refresh', 16)}</button>
+                    <a class="icon-btn" href="http://${esc(h.ip)}" target="_blank" rel="noopener" title="Открыть веб-интерфейс" style="color:inherit">${icon('ext', 16)}</a>
+                    <button class="icon-btn" data-act="edit" data-id="${esc(h.id)}" title="Редактировать">${icon('edit', 16)}</button>
+                    <button class="icon-btn del" data-act="del" data-id="${esc(h.id)}" title="Удалить">${icon('trash', 16)}</button>
+                </div></td></tr>`;
+        }).join('');
+    }
+    $('shownInfo').textContent = `Показано ${list.length} из ${hosts.length}`;
+}
+
+function renderMeta(c) {
+    const unique = new Set(hosts.map(h => h.ip)).size;
+    $('dbInfo').textContent = `${hosts.length} устройств · ${unique} IP`;
+    const g = {};
+    hosts.forEach(h => (g[h.ip] = g[h.ip] || []).push(h.name));
+    const dups = Object.entries(g).filter(([, n]) => n.length > 1);
+    const b = $('dupBanner');
+    if (dups.length) { b.style.display = 'block'; b.innerHTML = '⚠ Повторяющиеся IP (проверяются один раз): ' + dups.map(([ip, n]) => `<b>${esc(ip)}</b> ×${n.length}`).join(', '); }
+    else b.style.display = 'none';
+    const times = Object.values(results).map(r => r.t || 0);
+    const last = times.length ? Math.max(...times) : 0;
+    $('lastCheck').textContent = last ? 'Последняя проверка: ' + fmtTime(last) : 'Проверка ещё не запускалась';
+    document.title = (c.fail ? `(${c.fail} ❌) ` : '') + 'Мониторинг AP_Babilon-T';
+}
+
+/* ---------- События таблицы ---------- */
+$('chips').addEventListener('click', e => { const b = e.target.closest('[data-f]'); if (b) { filter = b.dataset.f; scheduleRender(); } });
+$('groupSel').onchange = e => { group = e.target.value; scheduleRender(); };
+$('search').addEventListener('input', e => { query = e.target.value; scheduleRender(); });
+document.querySelector('thead').addEventListener('click', e => {
+    const th = e.target.closest('th[data-sort]'); if (!th) return;
+    const k = th.dataset.sort;
+    if (sort.key === k) { if (sort.dir === 1) sort.dir = -1; else sort = { key: '', dir: 1 }; } else sort = { key: k, dir: 1 };
+    scheduleRender();
+});
+$('tbody').addEventListener('click', e => {
+    const a = e.target.closest('a[href^="http"]');
+    if (a) { e.preventDefault(); invoke('open_url', { url: a.getAttribute('href') }); return; }
+    const b = e.target.closest('[data-act]'); if (!b) return;
+    const h = hosts.find(x => x.id === b.dataset.id); if (!h) return;
+    switch (b.dataset.act) {
+        case 'pw': revealed.has(h.id) ? revealed.delete(h.id) : revealed.add(h.id); scheduleRender(); break;
+        case 'copypw': copyText(h.pass, 'Пароль скопирован'); break;
+        case 'copyip': copyText(h.ip, 'IP скопирован'); break;
+        case 'check': runChecks([h.ip]); break;
+        case 'edit': openEdit(h.id); break;
+        case 'del':
+            if (confirm(`Удалить «${h.name}» (${h.ip})?`)) { hosts = hosts.filter(x => x.id !== h.id); saveDB(); toast('Удалено'); }
+            break;
+    }
+});
+
+/* ---------- Модальные окна ---------- */
+let editId = null;
+function openEdit(id) {
+    editId = id || null;
+    const h = id ? hosts.find(x => x.id === id) : null;
+    $('editTitle').textContent = h ? 'Редактировать устройство' : 'Добавить устройство';
+    $('fName').value = h ? h.name : ''; $('fIp').value = h ? h.ip : ''; $('fSsid').value = h ? h.ssid : '';
+    $('fLogin').value = h ? h.login : ''; $('fPass').value = h ? h.pass : '';
+    $('editModal').classList.add('show'); $('fName').focus();
+}
+$('btnAdd').onclick = () => openEdit(null);
+document.addEventListener('click', e => {
+    const c = e.target.closest('[data-close]'); if (c) $(c.dataset.close).classList.remove('show');
+    if (e.target.classList.contains('modal')) e.target.classList.remove('show');
+});
+$('btnSave').onclick = () => {
+    const name = $('fName').value.trim(), ip = $('fIp').value.trim();
+    if (!name || !ip) return alert('Имя и IP обязательны для заполнения!');
+    if (!validIp(ip)) return alert('Некорректный IP-адрес.');
+    const dup = hosts.find(h => h.ip === ip && h.id !== editId);
+    if (dup && !confirm(`IP ${ip} уже есть в базе («${dup.name}»). Всё равно сохранить?`)) return;
+    const data = { name, ip, ssid: $('fSsid').value.trim(), login: $('fLogin').value.trim(), pass: $('fPass').value.trim() };
+    if (editId) Object.assign(hosts.find(h => h.id === editId), data); else hosts.push({ id: uid(), ...data });
+    saveDB(); $('editModal').classList.remove('show'); toast('Сохранено');
+};
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') document.querySelectorAll('.modal.show').forEach(m => m.classList.remove('show'));
+    if (e.key === 'Enter' && $('editModal').classList.contains('show') && e.target.tagName === 'INPUT') $('btnSave').click();
+    if (e.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); $('search').focus(); }
+});
+
+/* ---------- Экспорт / импорт ---------- */
+const IS_ANDROID = /Android/i.test(navigator.userAgent);
+function download(name, text, type) {
+    if (IS_ANDROID) { copyText(text, 'Скопировано в буфер обмена (' + name + ')'); return; }
+    const blob = new Blob([text], { type });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+const today = () => new Date().toISOString().slice(0, 10);
+$('btnExport').onclick = () => {
+    const withPw = confirm('Включить пароли в файл экспорта?\nОК — с паролями, Отмена — без паролей.');
+    download(`babilon-base-${today()}.json`, JSON.stringify(hosts.map(h => ({ name: h.name, ip: h.ip, ssid: h.ssid, login: h.login, pass: withPw ? h.pass : '' })), null, 2), 'application/json');
+};
+$('btnCsv').onclick = () => {
+    const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+    const rows = [['Статус', 'Имя', 'IP', 'SSID', 'Логин', 'Отклик, мс', 'Попыток', 'Время проверки']];
+    hosts.forEach(h => { const r = results[h.ip]; rows.push([LABEL[statusOf(h)], h.name, h.ip, h.ssid, h.login, r && r.ok ? r.ms : '', r ? r.attempts : '', r && r.t ? fmtTime(r.t) : '']); });
+    download(`babilon-report-${today()}.csv`, '\ufeff' + rows.map(r => r.map(q).join(';')).join('\r\n'), 'text/csv;charset=utf-8');
+};
+$('btnImport').onclick = () => $('importFile').click();
+$('importFile').onchange = e => {
+    const f = e.target.files[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = () => {
+        try {
+            const arr = JSON.parse(r.result);
+            if (!Array.isArray(arr)) throw new Error();
+            const items = arr.map(toObj).filter(h => h.ip && h.name);
+            const bad = arr.length - items.length;
+            if (!items.length) throw new Error();
+            if (bad > 0) alert(`Пропущено ${bad} записей: пустое имя или IP.`);
+            if (confirm(`Найдено ${items.length} устройств.\nОК — заменить текущую базу, Отмена — добавить к текущей.`)) hosts = items; else hosts = hosts.concat(items);
+            saveDB(); toast('Импорт выполнен');
+        } catch (err) { alert('Не удалось прочитать файл. Нужен JSON-массив устройств.'); }
+        $('importFile').value = '';
+    };
+    r.readAsText(f);
+};
+$('btnReset').onclick = async () => {
+    if (!confirm('Сбросить базу к исходному hosts.json? Все ваши правки будут потеряны.')) return;
+    const external = await loadExternalDB();
+    hosts = external || [];
+    results = {}; saveResults(); saveDB();
+    filter = 'all'; group = ''; query = ''; sort = { key: '', dir: 1 };
+    $('search').value = ''; $('groupSel').value = '';
+    toast(external && external.length ? 'База сброшена к hosts.json' : 'hosts.json не найден — база пуста');
+};
+$('btnCopyFail').onclick = () => {
+    const fails = hosts.filter(h => statusOf(h) === 'fail');
+    if (!fails.length) return toast('Нет офлайн-устройств');
+    copyText(fails.map(h => `❌ ${h.name} — ${h.ip}${h.ssid ? ' (' + h.ssid + ')' : ''}`).join('\n'), `Скопировано: ${fails.length}`);
+};
+
+/* ---------- Проверка ---------- */
+async function ping(ip, timeoutMs) {
+    try {
+        const r = await invoke('ping_host', { ip, timeoutMs });
+        return { ok: !!r.ok, ms: r.ms };
+    } catch (e) {
+        return { ok: false, ms: 0 };
+    }
+}
+
+async function runChecks(ips) {
+    if (running) return toast('Подождите окончания текущей проверки');
+    if (!ips.length) return toast('База пуста — добавьте устройства');
+    
+
+    // Читаем и сразу сохраняем актуальные настройки
+    const timeoutMs = clampInt($('timeoutMs').value, 200, 30000, 2000);
+    const retries = clampInt($('retries').value, 0, 20, 2); // Увеличено до 20
+    const conc = clampInt($('conc').value, 1, 50, 20);
+    
+    $('timeoutMs').value = timeoutMs; 
+    $('retries').value = retries; 
+    $('conc').value = conc; 
+    saveSettings();
+
+    running = true; stopFlag = false;
+    ips.forEach(ip => checking.add(ip));
+    $('btnStart').style.display = 'none'; $('btnStop').style.display = '';
+    let next = 0, done = 0;
+    const setProgress = () => {
+        $('topProgress').style.width = (done / ips.length * 100) + '%';
+        $('progText').textContent = `Проверено ${done} из ${ips.length}`;
+    };
+    setProgress(); scheduleRender();
+
+    async function worker() {
+        while (!stopFlag) {
+            const i = next++; if (i >= ips.length) return;
+            const ip = ips[i]; let attempts = 0, r;
+            do { attempts++; r = await ping(ip, timeoutMs); } while (!r.ok && attempts <= retries && !stopFlag);
+            results[ip] = { ok: r.ok, attempts, ms: r.ms, t: Date.now() };
+            checking.delete(ip); done++; setProgress(); scheduleRender();
+        }
+    }
+    await Promise.all(Array.from({ length: Math.min(conc, ips.length) }, worker));
+
+    const wasStopped = stopFlag;
+    checking.clear(); running = false; lastFinish = Date.now();
+    saveResults();
+    $('btnStart').style.display = ''; $('btnStop').style.display = 'none';
+    $('progText').textContent = wasStopped ? `Остановлено: проверено ${done} из ${ips.length}` : (ips.length > 1 ? 'Проверка завершена' : '');
+    setTimeout(() => { $('topProgress').style.width = '0'; }, 500);
+    scheduleRender();
+}
+$('btnStart').onclick = () => runChecks([...new Set(hosts.map(h => h.ip))]);
+$('btnStop').onclick = () => { stopFlag = true; };
+
+/* ---------- Автопроверка ---------- */
+setInterval(() => {
+    const t = $('autoText');
+    if (!$('auto').checked) { t.textContent = ''; return; }
+    
+    const m = clampInt($('autoMin').value, 1, 120, 5);
+    $('autoMin').value = m;   
+    const every = m * 60000;
+    if (running) { t.textContent = 'Идёт проверка…'; return; }
+    if (!lastFinish) lastFinish = Date.now();
+    const left = every - (Date.now() - lastFinish);
+    if (left <= 0) { runChecks([...new Set(hosts.map(h => h.ip))]); return; }
+    const s = Math.ceil(left / 1000);
+    t.textContent = `Следующая проверка через ${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+}, 1000);
+
+/* ---------- Старт ---------- */
+applyTheme(lsGet(TKEY) || 'dark');
+loadSettings(); // Загружаем настройки при старте
+
+
+// Асинхронная инициализация
+loadDB().then(() => {
+    render();
+    // Запуск таймера авто-проверки, если он был включен до перезапуска
+    if ($('auto').checked) lastFinish = Date.now();
+});
+</script>
+</body>
+</html>
