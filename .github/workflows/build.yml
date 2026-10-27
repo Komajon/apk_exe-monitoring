@@ -1,0 +1,126 @@
+name: Build Windows EXE (Electron) and Android APK (Tauri)
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install
+        working-directory: desktop
+        run: npm install
+
+      - name: Build portable EXE (Electron, WebView2 не нужен)
+        working-directory: desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npm run dist
+
+      - name: Collect
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item desktop/dist/AP_Babilon-T_Monitor.exe dist/AP_Babilon-T_Monitor.exe
+          if (Test-Path hosts.json) { Copy-Item hosts.json dist/hosts.json }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AP_Babilon-T_Monitor_Windows
+          path: dist/*
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+
+  android:
+    runs-on: ubuntu-latest
+    env:
+      NDK_VERSION: 26.1.10909125
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install SDK / NDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;$NDK_VERSION"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> $GITHUB_ENV
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Embed hosts.json (optional)
+        run: if [ -f hosts.json ]; then cp hosts.json ui/hosts.json; fi
+
+      - name: Generate icons and Android project
+        run: |
+          npx --yes @tauri-apps/cli@2 icon src-tauri/icons/icon.png
+          npx --yes @tauri-apps/cli@2 android init
+
+      - name: Build APK
+        run: npx --yes @tauri-apps/cli@2 android build --apk --target aarch64 --target armv7
+
+      - name: Sign APK
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -e
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          APK=$(find src-tauri/gen/android -name '*unsigned*.apk' | head -1)
+          echo "Unsigned APK: $APK"
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > ks.jks
+            PASS="$KS_PASS"; ALIAS="$KS_ALIAS"
+          else
+            PASS=android; ALIAS=apmonitor
+            keytool -genkeypair -keystore ks.jks -storepass "$PASS" -keypass "$PASS" \
+              -alias "$ALIAS" -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=AP Monitor"
+          fi
+          mkdir -p dist
+          "$BT/zipalign" -f -p 4 "$APK" aligned.apk
+          "$BT/apksigner" sign --ks ks.jks --ks-pass "pass:$PASS" --key-pass "pass:$PASS" \
+            --ks-key-alias "$ALIAS" --out dist/AP_Babilon-T_Monitor.apk aligned.apk
+          "$BT/apksigner" verify dist/AP_Babilon-T_Monitor.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AP_Babilon-T_Monitor_Android
+          path: dist/*.apk
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.apk
