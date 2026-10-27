@@ -42,7 +42,7 @@ jobs:
           path: dist/*
 
       - name: Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, "refs/tags/v")
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
@@ -51,6 +51,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       NDK_VERSION: 26.1.10909125
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     steps:
       - uses: actions/checkout@v4
 
@@ -59,13 +61,32 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - uses: android-actions/setup-android@v3
-
-      - name: Install SDK / NDK
+      - name: Setup Android SDK and NDK
+        shell: bash
         run: |
+          set -euxo pipefail
+
+          mkdir -p "$ANDROID_HOME"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+
+          if [ ! -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ] && [ ! -x "$ANDROID_HOME/cmdline-tools/bin/sdkmanager" ]; then
+            mkdir -p "$ANDROID_HOME/cmdline-tools"
+            wget -q "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip" -O /tmp/cmdline-tools.zip
+            unzip -q /tmp/cmdline-tools.zip -d "$ANDROID_HOME/cmdline-tools"
+            if [ -d "$ANDROID_HOME/cmdline-tools/cmdline-tools" ]; then
+              mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
+            fi
+          fi
+
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;$NDK_VERSION"
-          echo "NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> $GITHUB_ENV
+          sdkmanager --install "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;$NDK_VERSION"
+
+          echo "NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -100,6 +121,7 @@ jobs:
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           APK=$(find src-tauri/gen/android -name '*unsigned*.apk' | head -1)
           echo "Unsigned APK: $APK"
+
           if [ -n "$KS_B64" ]; then
             echo "$KS_B64" | base64 -d > ks.jks
             PASS="$KS_PASS"; ALIAS="$KS_ALIAS"
@@ -108,6 +130,7 @@ jobs:
             keytool -genkeypair -keystore ks.jks -storepass "$PASS" -keypass "$PASS" \
               -alias "$ALIAS" -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=AP Monitor"
           fi
+
           mkdir -p dist
           "$BT/zipalign" -f -p 4 "$APK" aligned.apk
           "$BT/apksigner" sign --ks ks.jks --ks-pass "pass:$PASS" --key-pass "pass:$PASS" \
@@ -120,7 +143,7 @@ jobs:
           path: dist/*.apk
 
       - name: Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, "refs/tags/v")
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*.apk
